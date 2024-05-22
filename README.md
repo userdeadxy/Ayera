@@ -19,6 +19,3 @@ Ayera was created using Shape.inc, a platform known for developing advanced conv
 
 ## Note
 Ayera is a private chatbot solely for my use, and no one else can access or modify it. If there are any inquiries or suggestions regarding Ayera, feel free to reach out to me directly.
-
----
-Feel free to adjust any details or add more information about Ayera's capabilities as needed!
