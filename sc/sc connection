@@ -19,4 +19,4 @@ async def hello(ctx: SlashContext, name: str = "there"):
     await ctx.send(f"Hello, {name}!")
 
 # Replace 'YOUR_BOT_TOKEN' with your actual bot token
-bot.run('MTIyMTcxMTAwODg5Mjk3NzIwMw.GTQKce.S8H3KOOqYzmUXhBGwHLxYSF5wwD4hmGTWKNwJs')
+
