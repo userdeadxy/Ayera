@@ -1,0 +1,67 @@
+import discord
+from discord.ext import commands
+import requests
+
+bot = commands.Bot(command_prefix="/")
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user.name}')
+
+@bot.command()
+async def anime(ctx, *, query):
+    search_url = f"https://graphql.anilist.co/"
+    search_query = '''
+    query ($search: String) {
+      Media (search: $search, type: ANIME) {
+        id
+        title {
+          romaji
+          english
+          native
+        }
+        description
+        averageScore
+        episodes
+        coverImage {
+          large
+        }
+        startDate {
+          year
+          month
+          day
+        }
+      }
+    }
+    '''
+    variables = {
+        'search': query
+    }
+    response = requests.post(search_url, json={'query': search_query, 'variables': variables})
+    data = response.json()
+    
+    if 'errors' in data:
+        await ctx.send("An error occurred while searching for the anime.")
+        return
+    
+    anime_data = data['data']['Media']
+    
+    if anime_data:
+        title = anime_data['title']['english'] or anime_data['title']['romaji'] or anime_data['title']['native']
+        description = anime_data['description'] or "No description available."
+        score = anime_data['averageScore'] or "N/A"
+        episodes = anime_data['episodes'] or "N/A"
+        start_date = f"{anime_data['startDate']['year']}-{anime_data['startDate']['month']}-{anime_data['startDate']['day']}"
+        cover_image = anime_data['coverImage']['large']
+        
+        embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
+        embed.add_field(name="Average Score", value=score)
+        embed.add_field(name="Episodes", value=episodes)
+        embed.add_field(name="Start Date", value=start_date)
+        embed.set_thumbnail(url=cover_image)
+        
+        await ctx.send(embed=embed)
+    else:
+        await ctx.send("No anime found.")
+
+bot.run('MTIyMTcxMTAwODg5Mjk3NzIwMw.GTQKce.S8H3KOOqYzmUXhBGwHLxYSF5wwD4hmGTWKNwJs')
