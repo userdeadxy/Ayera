@@ -1,0 +1,7 @@
+@bot.slash_command(name="xp", description="Check your current XP and progress towards the next level.")
+async def check_xp(ctx):
+    user_id = str(ctx.author.id)
+    xp = user_xp.get(user_id, 0)
+    level = xp // xp_threshold
+    xp_needed = (level + 1) * xp_threshold - xp
+    await ctx.send(f'You have {xp} XP. You need {xp_needed} XP to reach level {level + 1}.')
