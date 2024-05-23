@@ -1,0 +1,152 @@
+import os
+import discord
+from discord.ext import commands
+import youtube_dl
+import requests
+import sqlite3
+from google.cloud import dialogflow
+from google.api_core.exceptions import InvalidArgument
+
+# Load environment variables
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+DIALOGFLOW_PROJECT_ID = os.getenv('DIALOGFLOW_PROJECT_ID')
+GOOGLE_APPLICATION_CREDENTIALS = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+
+# Set up database
+conn = sqlite3.connect('ayera.db')
+c = conn.cursor()
+
+c.execute('''
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER UNIQUE,
+    currency INTEGER DEFAULT 0,
+    xp INTEGER DEFAULT 0
+)''')
+conn.commit()
+
+# Initialize Discord bot
+intents = discord.Intents.default()
+intents.messages = True
+intents.guilds = True
+intents.voice_states = True
+
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+@bot.event
+async def on_ready():
+    print(f'Bot is ready. Logged in as {bot.user}')
+
+# Natural conversation using Dialogflow
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+
+    if "Ayera" in message.content:
+        response = detect_intent_texts(DIALOGFLOW_PROJECT_ID, 'unique-session-id', message.content, 'en')
+        await message.channel.send(response.query_result.fulfillment_text)
+
+    await bot.process_commands(message)
+
+def detect_intent_texts(project_id, session_id, text, language_code):
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_APPLICATION_CREDENTIALS
+    session_client = dialogflow.SessionsClient()
+    session = session_client.session_path(project_id, session_id)
+
+    text_input = dialogflow.TextInput(text=text, language_code=language_code)
+    query_input = dialogflow.QueryInput(text=text_input)
+
+    try:
+        response = session_client.detect_intent(request={"session": session, "query_input": query_input})
+        return response
+    except InvalidArgument:
+        raise
+
+# Music streaming
+@bot.command()
+async def play(ctx, url):
+    if ctx.author.voice is None:
+        await ctx.send("You need to be in a voice channel to use this command.")
+        return
+
+    voice_channel = ctx.author.voice.channel
+    if ctx.voice_client is None:
+        await voice_channel.connect()
+    elif ctx.voice_client.channel != voice_channel:
+        await ctx.voice_client.move_to(voice_channel)
+
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+    }
+
+    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        url2 = info['formats'][0]['url']
+        ctx.voice_client.play(discord.FFmpegPCMAudio(executable="ffmpeg", source=url2))
+
+@bot.command()
+async def stop(ctx):
+    if ctx.voice_client is playing:
+        ctx.voice_client.stop()
+
+@bot.command()
+async def leave(ctx):
+    if ctx.voice_client is not None:
+        await ctx.voice_client.disconnect()
+
+# Anime and Manga search
+@bot.command()
+async def anime(ctx, *, query):
+    url = f'https://api.jikan.moe/v3/search/anime?q={query}'
+    response = requests.get(url)
+    data = response.json()
+    if data['results']:
+        title = data['results'][0]['title']
+        synopsis = data['results'][0]['synopsis']
+        await ctx.send(f'Title: {title}\nSynopsis: {synopsis}')
+    else:
+        await ctx.send('No results found.')
+
+# Currency and level-up system
+@bot.command()
+async def balance(ctx):
+    user_id = ctx.author.id
+    c.execute('SELECT currency FROM users WHERE user_id = ?', (user_id,))
+    row = c.fetchone()
+    if row:
+        await ctx.send(f'You have {row[0]} coins.')
+    else:
+        c.execute('INSERT INTO users (user_id) VALUES (?)', (user_id,))
+        conn.commit()
+        await ctx.send('You have 0 coins.')
+
+@bot.command()
+async def earn(ctx, amount: int):
+    user_id = ctx.author.id
+    c.execute('SELECT currency FROM users WHERE user_id = ?', (user_id,))
+    if c.fetchone():
+        c.execute('UPDATE users SET currency = currency + ? WHERE user_id = ?', (amount, user_id))
+    else:
+        c.execute('INSERT INTO users (user_id, currency) VALUES (?, ?)', (user_id, amount))
+    conn.commit()
+    await ctx.send(f'You earned {amount} coins.')
+
+@bot.command()
+async def xp(ctx, amount: int):
+    user_id = ctx.author.id
+    c.execute('SELECT xp FROM users WHERE user_id = ?', (user_id,))
+    if c.fetchone():
+        c.execute('UPDATE users SET xp = xp + ? WHERE user_id = ?', (amount, user_id))
+    else:
+        c.execute('INSERT INTO users (user_id, xp) VALUES (?, ?)', (user_id, amount))
+    conn.commit()
+    await ctx.send(f'You earned {amount} XP.')
+
+# Run the bot
+bot.run(DISCORD_TOKEN)
